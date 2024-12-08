@@ -1,19 +1,20 @@
 package com.br.fred.droptv
-
 import android.os.Bundle
+import androidx.annotation.OptIn
 import androidx.appcompat.app.AppCompatActivity
 import androidx.media3.common.MediaItem
-import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.hls.HlsMediaSource
 import com.br.fred.droptv.databinding.ActivityMainBinding
+import kotlinx.coroutines.*
 
 class MainActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityMainBinding
     private var exoPlayer: ExoPlayer? = null
+    private var watchdogJob: Job? = null
 
     @UnstableApi
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -37,15 +38,31 @@ class MainActivity : AppCompatActivity() {
             setMediaSource(mediaSource)
             playWhenReady = true
             prepare()
+        }
 
-            addListener(object : Player.Listener {
-                override fun onPlaybackStateChanged(playbackState: Int) {
-                    if (playbackState == Player.STATE_ENDED) {
+        // Start the playback watchdog
+        startPlaybackWatchdog()
+    }
+
+    private var lastPlaybackPosition: Long = 0
+    private val playbackWatchdogInterval: Long = 8000L
+
+    @OptIn(UnstableApi::class)
+    private fun startPlaybackWatchdog() {
+        watchdogJob = CoroutineScope(Dispatchers.Main).launch {
+            while (isActive) {
+                exoPlayer?.let { player ->
+                    val currentPosition = player.currentPosition
+
+
+                    if (currentPosition == lastPlaybackPosition) {
                         restartStream()
+                    } else {
+                        lastPlaybackPosition = currentPosition
                     }
                 }
-            })
-
+                delay(playbackWatchdogInterval)
+            }
         }
     }
 
@@ -65,6 +82,7 @@ class MainActivity : AppCompatActivity() {
     private fun releasePlayer() {
         exoPlayer?.release()
         exoPlayer = null
+        watchdogJob?.cancel()
     }
 
     override fun onPause() {
@@ -81,7 +99,6 @@ class MainActivity : AppCompatActivity() {
         super.onBackPressed()
         finish()
     }
-
 
     override fun onUserLeaveHint() {
         super.onUserLeaveHint()
