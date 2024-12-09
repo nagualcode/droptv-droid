@@ -1,3 +1,4 @@
 <resources>
     <string name="app_name">DropTV</string>
+    <string name="stream_url">https://play.droptv.com.br</string>
 </resources>

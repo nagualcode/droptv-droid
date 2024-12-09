@@ -1,5 +1,7 @@
 package com.br.fred.droptv
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import androidx.annotation.OptIn
 import androidx.appcompat.app.AppCompatActivity
 import androidx.media3.common.MediaItem
@@ -16,12 +18,20 @@ class MainActivity : AppCompatActivity() {
     private var exoPlayer: ExoPlayer? = null
     private var watchdogJob: Job? = null
 
+    companion object {
+        lateinit var STREAM_URL: String
+    }
+
     @UnstableApi
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        STREAM_URL = getString(R.string.stream_url)
+
         supportActionBar?.hide()
         setupView()
         initializePlayer()
+        showSplashOverlay()
     }
 
     private fun setupView() {
@@ -40,9 +50,22 @@ class MainActivity : AppCompatActivity() {
             prepare()
         }
 
-        // Start the playback watchdog
         startPlaybackWatchdog()
     }
+
+    private fun showSplashOverlay() {
+
+        binding.splashOverlay.apply {
+            setBackgroundResource(R.drawable.droptv)
+            visibility = android.view.View.VISIBLE
+            bringToFront()
+        }
+
+        Handler(Looper.getMainLooper()).postDelayed({
+            binding.splashOverlay.visibility = android.view.View.GONE
+        }, 3000)
+    }
+
 
     private var lastPlaybackPosition: Long = 0
     private val playbackWatchdogInterval: Long = 8000L
@@ -53,8 +76,6 @@ class MainActivity : AppCompatActivity() {
             while (isActive) {
                 exoPlayer?.let { player ->
                     val currentPosition = player.currentPosition
-
-
                     if (currentPosition == lastPlaybackPosition) {
                         restartStream()
                     } else {
@@ -103,9 +124,5 @@ class MainActivity : AppCompatActivity() {
     override fun onUserLeaveHint() {
         super.onUserLeaveHint()
         finish()
-    }
-
-    companion object {
-        private const val STREAM_URL = "https://play.droptv.com.br"
     }
 }
