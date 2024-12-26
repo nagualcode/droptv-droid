@@ -1,22 +1,30 @@
 package com.br.fred.droptv
 
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import androidx.appcompat.app.AppCompatActivity
 import androidx.media3.common.MediaItem
+import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.hls.HlsMediaSource
 import com.br.fred.droptv.databinding.ActivityMainBinding
+import kotlin.math.pow
 
 class MainActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityMainBinding
     private var exoPlayer: ExoPlayer? = null
+    private var retryCount = 0
 
     companion object {
         lateinit var STREAM_URL: String
+        private const val INITIAL_DELAY = 1000L
     }
 
     @UnstableApi
@@ -49,8 +57,12 @@ class MainActivity : AppCompatActivity() {
             addListener(object : Player.Listener {
                 override fun onPlaybackStateChanged(state: Int) {
                     if (state == Player.STATE_ENDED) {
-                        restartStream()
+                        attemptRestartStream()
                     }
+                }
+
+                override fun onPlayerError(error: PlaybackException) {
+                    attemptRestartStream()
                 }
             })
         }
@@ -63,9 +75,24 @@ class MainActivity : AppCompatActivity() {
             bringToFront()
         }
 
-        android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+        Handler(Looper.getMainLooper()).postDelayed({
             binding.splashOverlay.visibility = android.view.View.GONE
-        }, 6000)
+        }, 4500)
+    }
+
+    @UnstableApi
+    private fun attemptRestartStream() {
+        if (isNetworkAvailable()) {
+            retryCount++
+            Handler(Looper.getMainLooper()).postDelayed({
+                restartStream()
+            }, getRetryDelay())
+        } else {
+
+            Handler(Looper.getMainLooper()).postDelayed({
+                attemptRestartStream()
+            }, INITIAL_DELAY)
+        }
     }
 
     @UnstableApi
@@ -78,7 +105,12 @@ class MainActivity : AppCompatActivity() {
             it.setMediaSource(mediaSource)
             it.prepare()
             it.playWhenReady = true
+            retryCount = 0
         }
+    }
+
+    private fun getRetryDelay(): Long {
+        return (2.0.pow(retryCount.toDouble()) * 1000).toLong()
     }
 
     private fun releasePlayer() {
@@ -96,14 +128,18 @@ class MainActivity : AppCompatActivity() {
         releasePlayer()
     }
 
- //   override fun onBackPressed() {
- //       super.onBackPressed()
- //       finish()
- //   }
 
-//    override fun onUserLeaveHint() {
-//        super.onUserLeaveHint()
-//        finish()
-//    }
-//
+    private fun isNetworkAvailable(): Boolean {
+        val connectivityManager = getSystemService(CONNECTIVITY_SERVICE) as ConnectivityManager
+        val network = connectivityManager.activeNetwork ?: return false
+        val networkCapabilities = connectivityManager.getNetworkCapabilities(network) ?: return false
+        return networkCapabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+    }
+
+    override fun onUserLeaveHint() {
+        super.onUserLeaveHint()
+        finish()
+    }
 }
+
+
