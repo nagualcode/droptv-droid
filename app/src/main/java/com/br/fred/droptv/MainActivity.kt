@@ -1,22 +1,19 @@
 package com.br.fred.droptv
+
 import android.os.Bundle
-import android.os.Handler
-import android.os.Looper
-import androidx.annotation.OptIn
 import androidx.appcompat.app.AppCompatActivity
 import androidx.media3.common.MediaItem
+import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.hls.HlsMediaSource
 import com.br.fred.droptv.databinding.ActivityMainBinding
-import kotlinx.coroutines.*
 
 class MainActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityMainBinding
     private var exoPlayer: ExoPlayer? = null
-    private var watchdogJob: Job? = null
 
     companion object {
         lateinit var STREAM_URL: String
@@ -48,43 +45,27 @@ class MainActivity : AppCompatActivity() {
             setMediaSource(mediaSource)
             playWhenReady = true
             prepare()
-        }
 
-        startPlaybackWatchdog()
+            addListener(object : Player.Listener {
+                override fun onPlaybackStateChanged(state: Int) {
+                    if (state == Player.STATE_ENDED) {
+                        restartStream()
+                    }
+                }
+            })
+        }
     }
 
     private fun showSplashOverlay() {
-
         binding.splashOverlay.apply {
             setBackgroundResource(R.drawable.droptv)
             visibility = android.view.View.VISIBLE
             bringToFront()
         }
 
-        Handler(Looper.getMainLooper()).postDelayed({
+        android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
             binding.splashOverlay.visibility = android.view.View.GONE
-        }, 3000)
-    }
-
-
-    private var lastPlaybackPosition: Long = 0
-    private val playbackWatchdogInterval: Long = 8000L
-
-    @OptIn(UnstableApi::class)
-    private fun startPlaybackWatchdog() {
-        watchdogJob = CoroutineScope(Dispatchers.Main).launch {
-            while (isActive) {
-                exoPlayer?.let { player ->
-                    val currentPosition = player.currentPosition
-                    if (currentPosition == lastPlaybackPosition) {
-                        restartStream()
-                    } else {
-                        lastPlaybackPosition = currentPosition
-                    }
-                }
-                delay(playbackWatchdogInterval)
-            }
-        }
+        }, 6000)
     }
 
     @UnstableApi
@@ -103,7 +84,6 @@ class MainActivity : AppCompatActivity() {
     private fun releasePlayer() {
         exoPlayer?.release()
         exoPlayer = null
-        watchdogJob?.cancel()
     }
 
     override fun onPause() {
@@ -116,13 +96,14 @@ class MainActivity : AppCompatActivity() {
         releasePlayer()
     }
 
-    override fun onBackPressed() {
-        super.onBackPressed()
-        finish()
-    }
+ //   override fun onBackPressed() {
+ //       super.onBackPressed()
+ //       finish()
+ //   }
 
-    override fun onUserLeaveHint() {
-        super.onUserLeaveHint()
-        finish()
-    }
+//    override fun onUserLeaveHint() {
+//        super.onUserLeaveHint()
+//        finish()
+//    }
+//
 }

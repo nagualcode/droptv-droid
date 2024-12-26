@@ -7,17 +7,21 @@ android {
     namespace = "com.br.fred.droptv"
     compileSdk = 35
 
-
     defaultConfig {
         applicationId = "com.br.fred.droptv"
         minSdk = 24
         //noinspection EditedTargetSdkVersion
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0"
-
+        versionCode = 2
+        versionName = "2"
     }
 
+    buildTypes {
+        release {
+            isMinifyEnabled = true
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+        }
+    }
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
@@ -27,10 +31,10 @@ android {
     kotlinOptions {
         jvmTarget = "17"
     }
+
     buildFeatures {
         viewBinding = true
     }
-
 }
 
 dependencies {
@@ -43,5 +47,4 @@ dependencies {
     implementation("androidx.media3:media3-exoplayer:1.5.0")
     implementation("androidx.media3:media3-exoplayer-hls:1.5.0")
     implementation("androidx.media3:media3-ui:1.5.0")
-
 }
