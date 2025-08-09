@@ -1,9 +1,7 @@
 package com.br.fred.droptv
 
 import android.net.ConnectivityManager
-import android.net.Network
 import android.net.NetworkCapabilities
-import android.net.NetworkRequest
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -18,31 +16,25 @@ import androidx.media3.exoplayer.hls.HlsMediaSource
 import com.br.fred.droptv.databinding.ActivityMainBinding
 import kotlin.math.pow
 
-@UnstableApi
 class MainActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityMainBinding
     private var exoPlayer: ExoPlayer? = null
     private var retryCount = 0
-    private val handler = Handler(Looper.getMainLooper())
-    private lateinit var connectivityManager: ConnectivityManager
-    private var isNetworkConnected = false
 
     companion object {
         lateinit var STREAM_URL: String
         private const val INITIAL_DELAY = 1000L
-        private const val MAX_RETRY_DELAY = 5_000L
     }
 
+    @UnstableApi
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
         STREAM_URL = getString(R.string.stream_url)
-        connectivityManager = getSystemService(CONNECTIVITY_SERVICE) as ConnectivityManager
 
         supportActionBar?.hide()
         setupView()
-        registerNetworkCallback()
         initializePlayer()
         showSplashOverlay()
     }
@@ -52,28 +44,19 @@ class MainActivity : AppCompatActivity() {
         setContentView(binding.root)
     }
 
-    private fun createMediaSource(): HlsMediaSource {
-        val dataSourceFactory = DefaultHttpDataSource.Factory().apply {
-            setAllowCrossProtocolRedirects(true)
-            setDefaultRequestProperties(
-                mapOf("Cache-Control" to "no-cache", "Pragma" to "no-cache")
-            )
-        }
-        return HlsMediaSource.Factory(dataSourceFactory)
-            .createMediaSource(MediaItem.fromUri(STREAM_URL))
-    }
-
+    @UnstableApi
     private fun initializePlayer() {
         exoPlayer = ExoPlayer.Builder(this).build().apply {
             binding.playerView.player = this
-            val mediaSource = createMediaSource()
+            val mediaSource = HlsMediaSource.Factory(DefaultHttpDataSource.Factory())
+                .createMediaSource(MediaItem.fromUri(STREAM_URL))
             setMediaSource(mediaSource)
             playWhenReady = true
             prepare()
 
             addListener(object : Player.Listener {
                 override fun onPlaybackStateChanged(state: Int) {
-                    if (state == Player.STATE_ENDED || state == Player.STATE_IDLE) {
+                    if (state == Player.STATE_ENDED) {
                         attemptRestartStream()
                     }
                 }
@@ -91,40 +74,43 @@ class MainActivity : AppCompatActivity() {
             visibility = android.view.View.VISIBLE
             bringToFront()
         }
-        handler.postDelayed({
+
+        Handler(Looper.getMainLooper()).postDelayed({
             binding.splashOverlay.visibility = android.view.View.GONE
         }, 4500)
     }
 
+    @UnstableApi
     private fun attemptRestartStream() {
-        if (isNetworkConnected) {
+        if (isNetworkAvailable()) {
             retryCount++
-            handler.postDelayed({
+            Handler(Looper.getMainLooper()).postDelayed({
                 restartStream()
             }, getRetryDelay())
         } else {
-            handler.postDelayed({
+
+            Handler(Looper.getMainLooper()).postDelayed({
                 attemptRestartStream()
             }, INITIAL_DELAY)
         }
     }
 
+    @UnstableApi
     private fun restartStream() {
         exoPlayer?.let {
             it.stop()
             it.clearMediaItems()
-            val mediaSource = createMediaSource()
+            val mediaSource = HlsMediaSource.Factory(DefaultHttpDataSource.Factory())
+                .createMediaSource(MediaItem.fromUri(STREAM_URL))
             it.setMediaSource(mediaSource)
             it.prepare()
-            it.seekToDefaultPosition()
             it.playWhenReady = true
             retryCount = 0
         }
     }
 
     private fun getRetryDelay(): Long {
-        val delay = (2.0.pow(retryCount.toDouble()) * 1000).toLong()
-        return minOf(delay, MAX_RETRY_DELAY)
+        return (2.0.pow(retryCount.toDouble()) * 1000).toLong()
     }
 
     private fun releasePlayer() {
@@ -142,36 +128,17 @@ class MainActivity : AppCompatActivity() {
         releasePlayer()
     }
 
-    private fun registerNetworkCallback() {
-        val request = NetworkRequest.Builder()
-            .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
-            .build()
 
-        connectivityManager.registerNetworkCallback(request, object : ConnectivityManager.NetworkCallback() {
-            override fun onAvailable(network: Network) {
-                isNetworkConnected = true
-
-                if (exoPlayer == null) {
-                    initializePlayer()
-                }
-            }
-
-            override fun onLost(network: Network) {
-                isNetworkConnected = false
-            }
-        })
+    private fun isNetworkAvailable(): Boolean {
+        val connectivityManager = getSystemService(CONNECTIVITY_SERVICE) as ConnectivityManager
+        val network = connectivityManager.activeNetwork ?: return false
+        val networkCapabilities = connectivityManager.getNetworkCapabilities(network) ?: return false
+        return networkCapabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
     }
 
     override fun onUserLeaveHint() {
         super.onUserLeaveHint()
-
-        finishAndRemoveTask()
-    }
-
-    override fun onDestroy() {
-        handler.removeCallbacksAndMessages(null)
-        releasePlayer()
-        connectivityManager.unregisterNetworkCallback(ConnectivityManager.NetworkCallback())
-        super.onDestroy()
+        finish()
     }
 }
+
