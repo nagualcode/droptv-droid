@@ -1,4 +1,5 @@
 <resources>
     <string name="app_name">DropTV</string>
     <string name="stream_url">https://play.droptv.com.br</string>
+    <string name="now_json_url">https://droptv.com.br/now.json</string>
 </resources>

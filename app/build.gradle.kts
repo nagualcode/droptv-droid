@@ -5,15 +5,15 @@ plugins {
 
 android {
     namespace = "com.br.fred.droptv"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.br.fred.droptv"
         minSdk = 24
         //noinspection EditedTargetSdkVersion
-        targetSdk = 35
-        versionCode = 5
-        versionName = "Leblon"
+        targetSdk = 36
+        versionCode = 7
+        versionName = "Arpex"
     }
 
     buildTypes {
@@ -40,7 +40,7 @@ android {
 dependencies {
     // AndroidX
     implementation("androidx.appcompat:appcompat:1.7.1")
-    implementation("androidx.core:core-ktx:1.16.0")
+    implementation("androidx.core:core-ktx:1.17.0")
     implementation("androidx.constraintlayout:constraintlayout:2.2.1")
 
     // Media3 (ExoPlayer e UI)
