@@ -1,0 +1,22 @@
+steps:
+  # Passo 1: Garantir que o script do Gradle tem permissão de execução
+  - name: 'ubuntu'
+    args: ['chmod', '+x', './gradlew']
+
+  # Passo 2: Executar a compilação do app usando uma imagem com o Android SDK
+  - name: 'ghcr.io/cirruslabs/android-sdk:34'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        # Aceitar as licenças do SDK automaticamente
+        yes | sdkmanager --licenses
+        
+        # Executar o build para gerar o APK de debug
+        ./gradlew assembleDebug
+
+# Passo 3: Exportar o arquivo compilado para o armazenamento permanente
+artifacts:
+  objects:
+    location: 'gs://droptvappbuild/droptv-builds/$BUILD_ID/'
+    paths: ['app/build/outputs/apk/debug/*.apk']
