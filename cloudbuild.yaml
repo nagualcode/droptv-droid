@@ -20,3 +20,7 @@ artifacts:
   objects:
     location: 'gs://droptvappbuild/droptv-builds/$BUILD_ID/'
     paths: ['app/build/outputs/apk/debug/*.apk']
+
+# Correção do erro: Define o comportamento dos logs exigido pela conta de serviço
+options:
+  logging: CLOUD_LOGGING_ONLY
