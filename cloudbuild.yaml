@@ -3,15 +3,15 @@ steps:
   - name: 'ubuntu'
     args: ['chmod', '+x', './gradlew']
 
-  # Passo 2: Baixar o arquivo .jks do seu bucket do Cloud Storage para o ambiente temporário
+  # Passo 2: Baixar o arquivo .jks do seu bucket
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     entrypoint: 'bash'
     args:
       - '-c'
       - |
-        gsutil cp gs://droptvappbuild/keys/droptv-production.jks ./app/production.jks
+        gsutil cp gs://droptvappbuild/droptv-production.jks ./app/production.jks
 
-  # Passo 3: Executar a compilação de produção (Release) injetando as variáveis do console
+  # Passo 3: Executar a compilação gerando o App Bundle (.aab) de produção assinado
   - name: 'ghcr.io/cirruslabs/android-sdk:34'
     entrypoint: 'bash'
     env:
@@ -23,14 +23,15 @@ steps:
       - '-c'
       - |
         yes | sdkmanager --licenses
-        # Compila gerando o APK de produção assinado e otimizado com Proguard/Minify
-        ./gradlew assembleRelease
+        # Altera de assembleRelease para bundleRelease
+        ./gradlew bundleRelease
 
-# Passo 4: Exportar o APK de produção gerado para o bucket
+# Passo 4: Exportar o arquivo .aab gerado para o bucket
 artifacts:
   objects:
     location: 'gs://droptvappbuild/droptv-production-builds/$BUILD_ID/'
-    paths: ['app/build/outputs/apk/release/*.apk']
+    # O Gradle salva o bundle em uma pasta diferente ('outputs/bundle/release/')
+    paths: ['app/build/outputs/bundle/release/*.aab']
 
 options:
   logging: CLOUD_LOGGING_ONLY
