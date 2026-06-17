@@ -70,8 +70,55 @@ class MainActivity : AppCompatActivity() {
         connectivityManager = getSystemService(CONNECTIVITY_SERVICE) as ConnectivityManager
         registerNetworkCallback()
 
-        initializePlayer()
         showSplashOverlay()
+        
+        // A inicialização do player foi removida do onCreate e movida para o onStart
+        // respeitando as diretrizes do Android Lifecycle.
+    }
+
+    // -------------------------------------------------------------------------
+    // LIFECYCLE
+    // -------------------------------------------------------------------------
+
+    override fun onStart() {
+        super.onStart()
+        // API 24+ recomenda inicializar recursos de mídia no onStart
+        initializePlayer()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // Garante que a reprodução inicie/continue quando o app estiver visível
+        exoPlayer?.playWhenReady = true
+    }
+
+    override fun onPause() {
+        super.onPause()
+        // Apenas pausa a reprodução, mas não destrói o player ainda
+        exoPlayer?.playWhenReady = false
+    }
+
+    override fun onStop() {
+        super.onStop()
+        // API 24+ recomenda liberar os recursos no onStop
+        releasePlayer()
+        
+        // Força a finalização da Activity quando ela sai de cena (TV dormiu ou mudou de app).
+        // Isso garante o seu objetivo de "matar" o app para iniciar do zero na próxima vez.
+        finish()
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        unregisterNetworkCallback()
+        releasePlayer()
+        nowExecutor.shutdownNow()
+    }
+
+    override fun onUserLeaveHint() {
+        super.onUserLeaveHint()
+        // Executado primariamente quando o usuário aperta o botão HOME
+        finish()
     }
 
     // -------------------------------------------------------------------------
@@ -79,7 +126,7 @@ class MainActivity : AppCompatActivity() {
     // -------------------------------------------------------------------------
 
     private fun initializePlayer() {
-        releasePlayer()
+        if (exoPlayer != null) return // Evita recriar se já existir
 
         exoPlayer = ExoPlayer.Builder(this).build().apply {
             binding.playerView.player = this
@@ -88,9 +135,7 @@ class MainActivity : AppCompatActivity() {
             val mediaSource = HlsMediaSource.Factory(DefaultHttpDataSource.Factory())
                 .createMediaSource(mediaItem)
 
-            // Always seek to live edge before preparing
             seekToDefaultPosition()
-
             setMediaSource(mediaSource)
             playWhenReady = true
             prepare()
@@ -104,14 +149,11 @@ class MainActivity : AppCompatActivity() {
                                 cancelScheduledRestart()
                             }
                         }
-                        Player.STATE_ENDED -> {
+                        Player.STATE_ENDED, Player.STATE_IDLE -> {
                             scheduleRestart()
                         }
                         Player.STATE_BUFFERING -> {
-                            // Optional: handle long buffering scenarios here
-                        }
-                        Player.STATE_IDLE -> {
-                            scheduleRestart()
+                            // Opcional: tratar longos períodos de buffering
                         }
                     }
                 }
@@ -121,6 +163,18 @@ class MainActivity : AppCompatActivity() {
                 }
             })
         }
+    }
+
+    private fun releasePlayer() {
+        cancelScheduledRestart()
+        stopNowPolling()
+        exoPlayer?.let { player ->
+            try {
+                player.stop()
+            } catch (_: Exception) {}
+            player.release()
+        }
+        exoPlayer = null
     }
 
     private fun showSplashOverlay() {
@@ -141,13 +195,18 @@ class MainActivity : AppCompatActivity() {
         netCallback = object : NetworkCallback() {
             override fun onAvailable(network: Network) {
                 mainHandler.post {
-                    scheduleRestart(forceImmediate = true)
+                    // Evita disparar reinicializações se o app estiver sendo fechado
+                    if (!isFinishing && !isDestroyed) {
+                        scheduleRestart(forceImmediate = true)
+                    }
                 }
             }
 
             override fun onLost(network: Network) {
                 mainHandler.post {
-                    scheduleRestart()
+                    if (!isFinishing && !isDestroyed) {
+                        scheduleRestart()
+                    }
                 }
             }
         }
@@ -158,8 +217,7 @@ class MainActivity : AppCompatActivity() {
         netCallback?.let {
             try {
                 connectivityManager.unregisterNetworkCallback(it)
-            } catch (_: Exception) {
-            }
+            } catch (_: Exception) {}
         }
         netCallback = null
     }
@@ -168,7 +226,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun scheduleRestart(forceImmediate: Boolean = false) {
         cancelScheduledRestart()
-        if (exoPlayer == null) return
+        if (isFinishing || isDestroyed) return
 
         val delay = if (!isNetworkAvailable()) {
             INITIAL_DELAY_MS
@@ -197,6 +255,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun restartStream() {
+        if (isFinishing || isDestroyed) return
+
         exoPlayer?.let { player ->
             try {
                 player.playWhenReady = false
@@ -219,41 +279,6 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun releasePlayer() {
-        cancelScheduledRestart()
-        stopNowPolling()
-        exoPlayer?.let { player ->
-            try {
-                player.stop()
-            } catch (_: Exception) {
-            }
-            player.release()
-        }
-        exoPlayer = null
-    }
-
-    override fun onPause() {
-        super.onPause()
-        releasePlayer()
-    }
-
-    override fun onStop() {
-        super.onStop()
-        releasePlayer()
-    }
-
-    override fun onDestroy() {
-        super.onDestroy()
-        unregisterNetworkCallback()
-        releasePlayer()
-        nowExecutor.shutdownNow()
-    }
-
-    override fun onUserLeaveHint() {
-        super.onUserLeaveHint()
-        finish()
-    }
-
     private fun isNetworkAvailable(): Boolean {
         val network = connectivityManager.activeNetwork ?: return false
         val caps = connectivityManager.getNetworkCapabilities(network) ?: return false
@@ -261,7 +286,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     // -------------------------------------------------------------------------
-    // NOW PLAYING: JSON polling only when banner is active
+    // NOW PLAYING
     // -------------------------------------------------------------------------
 
     private fun startNowPolling() {
@@ -270,26 +295,24 @@ class MainActivity : AppCompatActivity() {
         nowPollingRunnable = object : Runnable {
             override fun run() {
                 if (!binding.nowPlayingBanner.isVisible) {
-                    // If the banner is no longer visible, stop polling
                     stopNowPolling()
                     return
                 }
 
-                // Run JSON fetch on the single-thread executor
                 nowExecutor.execute {
                     try {
                         fetchAndUpdateNowPlaying()
                     } catch (e: Exception) {
                         e.printStackTrace()
                     } finally {
-                        // Schedule next polling run on the main thread
-                        mainHandler.postDelayed(this, NOW_POLL_INTERVAL_MS)
+                        if (!isFinishing && !isDestroyed) {
+                            mainHandler.postDelayed(this, NOW_POLL_INTERVAL_MS)
+                        }
                     }
                 }
             }
         }
 
-        // First run immediately
         mainHandler.post(nowPollingRunnable!!)
     }
 
@@ -315,7 +338,6 @@ class MainActivity : AppCompatActivity() {
             val musicFile = json.optString("music_file", "")
             if (musicFile.isEmpty()) return
 
-            // Update only if the track changed
             if (musicFile == lastMusicFile) return
             lastMusicFile = musicFile
 
@@ -323,11 +345,12 @@ class MainActivity : AppCompatActivity() {
             val artist = json.optString("artist", "")
             val coverUrl = json.optString("cover_url", "")
 
-            // Fallback same as Roku: if title is blank, use music_file
             val displayTitle = title.ifBlank { musicFile }
 
-            runOnUiThread {
-                updateNowPlayingBanner(displayTitle, artist, coverUrl)
+            if (!isFinishing && !isDestroyed) {
+                runOnUiThread {
+                    updateNowPlayingBanner(displayTitle, artist, coverUrl)
+                }
             }
         } catch (e: Exception) {
             e.printStackTrace()
@@ -348,7 +371,6 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // Simple width adjustment based on text size (Roku-style behavior)
     private fun adjustBannerWidthForText(title: String, artist: String) {
         val root = binding.rootContainer
         val longest = maxOf(title.length, artist.length)
@@ -357,8 +379,8 @@ class MainActivity : AppCompatActivity() {
             val w = root.width
             if (w <= 0) return@post
 
-            val minFactor = 0.3f   // 30% of the screen width
-            val maxFactor = 0.9f   // up to 90% of the screen width
+            val minFactor = 0.3f
+            val maxFactor = 0.9f
             val baseChars = 24f
 
             val scale = (longest / baseChars).coerceAtLeast(1f)
@@ -374,7 +396,6 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // Ephemeral cover download (no disk cache)
     private fun loadCoverImage(urlStr: String) {
         binding.coverImage.visibility = View.VISIBLE
 
@@ -384,23 +405,27 @@ class MainActivity : AppCompatActivity() {
                 url.openStream().use { input ->
                     BufferedInputStream(input).use { bis ->
                         val bmp = BitmapFactory.decodeStream(bis)
-                        runOnUiThread {
-                            binding.coverImage.setImageBitmap(bmp)
+                        if (!isFinishing && !isDestroyed) {
+                            runOnUiThread {
+                                binding.coverImage.setImageBitmap(bmp)
+                            }
                         }
                     }
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
-                runOnUiThread {
-                    binding.coverImage.setImageBitmap(null)
-                    binding.coverImage.visibility = View.GONE
+                if (!isFinishing && !isDestroyed) {
+                    runOnUiThread {
+                        binding.coverImage.setImageBitmap(null)
+                        binding.coverImage.visibility = View.GONE
+                    }
                 }
             }
         }.start()
     }
 
     // -------------------------------------------------------------------------
-    // REMOTE CONTROL: OK = toggle banner
+    // REMOTE CONTROL
     // -------------------------------------------------------------------------
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
@@ -422,13 +447,9 @@ class MainActivity : AppCompatActivity() {
         binding.nowPlayingBanner.visibility = if (visible) View.VISIBLE else View.GONE
 
         if (visible) {
-            // When showing, keep the last artwork/text for the current track (if any)
             startNowPolling()
         } else {
-            // When hiding, stop polling but keep the current artwork in memory
             stopNowPolling()
-            // Do NOT clear coverImage here, so the artwork is preserved
-            // while the same track is still playing
         }
     }
 }

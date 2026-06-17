@@ -16,9 +16,22 @@ android {
         versionName = "Arpex"
     }
 
+    signingConfigs {
+        create("release") {
+            // Captura as variáveis de ambiente fornecidas pelo pipeline do Cloud Build
+            val keystoreFile = System.getenv("KEYSTORE_FILE") ?: "dummy.jks"
+            storeFile = file(keystoreFile)
+            storePassword = System.getenv("KEYSTORE_PASSWORD")
+            keyAlias = System.getenv("KEY_ALIAS")
+            keyPassword = System.getenv("KEY_PASSWORD")
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = true
+            // Associa a configuração de assinatura criada acima a este tipo de build
+            signingConfig = signingConfigs.getByName("release")
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }

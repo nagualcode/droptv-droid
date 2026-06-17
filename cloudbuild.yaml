@@ -3,24 +3,34 @@ steps:
   - name: 'ubuntu'
     args: ['chmod', '+x', './gradlew']
 
-  # Passo 2: Executar a compilação do app usando uma imagem com o Android SDK
-  - name: 'ghcr.io/cirruslabs/android-sdk:34'
+  # Passo 2: Baixar o arquivo .jks do seu bucket do Cloud Storage para o ambiente temporário
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     entrypoint: 'bash'
     args:
       - '-c'
       - |
-        # Aceitar as licenças do SDK automaticamente
-        yes | sdkmanager --licenses
-        
-        # Executar o build para gerar o APK de debug
-        ./gradlew assembleDebug
+        gsutil cp gs://droptvappbuild/keys/droptv-production.jks ./app/production.jks
 
-# Passo 3: Exportar o arquivo compilado para o armazenamento permanente
+  # Passo 3: Executar a compilação de produção (Release) injetando as variáveis do console
+  - name: 'ghcr.io/cirruslabs/android-sdk:34'
+    entrypoint: 'bash'
+    env:
+      - 'KEYSTORE_FILE=production.jks'
+      - 'KEYSTORE_PASSWORD=$_KEYSTORE_PASSWORD'
+      - 'KEY_ALIAS=$_KEY_ALIAS'
+      - 'KEY_PASSWORD=$_KEY_PASSWORD'
+    args:
+      - '-c'
+      - |
+        yes | sdkmanager --licenses
+        # Compila gerando o APK de produção assinado e otimizado com Proguard/Minify
+        ./gradlew assembleRelease
+
+# Passo 4: Exportar o APK de produção gerado para o bucket
 artifacts:
   objects:
-    location: 'gs://droptvappbuild/droptv-builds/$BUILD_ID/'
-    paths: ['app/build/outputs/apk/debug/*.apk']
+    location: 'gs://droptvappbuild/droptv-production-builds/$BUILD_ID/'
+    paths: ['app/build/outputs/apk/release/*.apk']
 
-# Correção do erro: Define o comportamento dos logs exigido pela conta de serviço
 options:
   logging: CLOUD_LOGGING_ONLY
