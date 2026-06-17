@@ -12,8 +12,8 @@ android {
         minSdk = 24
         //noinspection EditedTargetSdkVersion
         targetSdk = 36
-        versionCode = 7
-        versionName = "Arpex"
+        versionCode = 8
+        versionName = "Huahine"
     }
 
     signingConfigs {
