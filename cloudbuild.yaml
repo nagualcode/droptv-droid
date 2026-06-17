@@ -9,7 +9,7 @@ steps:
     args:
       - '-c'
       - |
-        gsutil cp gs://droptvappbuild/droptv-production.jks ./app/production.jks
+        gsutil cp gs://droptvappbuild/keys/droptv-production.jks ./app/production.jks
 
   # Passo 3: Executar a compilação gerando o App Bundle (.aab) de produção assinado
   - name: 'ghcr.io/cirruslabs/android-sdk:34'
